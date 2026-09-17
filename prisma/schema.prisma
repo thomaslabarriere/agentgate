@@ -1,0 +1,212 @@
+// AgentGate data model. Multi-tenant: every domain row is scoped to an
+// Organization, and access is mediated by Membership roles (RBAC). Auth.js
+// tables (User/Account/Session) sit alongside the domain tables.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth.js (NextAuth) tables
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String       @id @default(cuid())
+  name          String?
+  email         String?      @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  memberships   Membership[]
+  createdAt     DateTime     @default(now())
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy + RBAC
+// ---------------------------------------------------------------------------
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model Organization {
+  id           String        @id @default(cuid())
+  name         String
+  slug         String        @unique
+  createdAt    DateTime      @default(now())
+  memberships  Membership[]
+  agents       Agent[]
+  policies     Policy[]
+  decisions    Decision[]
+  webhooks     WebhookEndpoint[]
+  subscription Subscription?
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  role           Role         @default(MEMBER)
+  userId         String
+  organizationId String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([userId, organizationId])
+}
+
+// A pending invite to an org (accepted -> becomes a Membership).
+model Invitation {
+  id             String   @id @default(cuid())
+  email          String
+  role           Role     @default(MEMBER)
+  organizationId String
+  token          String   @unique @default(cuid())
+  createdAt      DateTime @default(now())
+
+  @@unique([email, organizationId])
+}
+
+// ---------------------------------------------------------------------------
+// Agents + API keys
+// ---------------------------------------------------------------------------
+
+model Agent {
+  id             String       @id @default(cuid())
+  name           String
+  organizationId String
+  apiKeyHash     String       @unique // sha256 of the raw key; raw shown once
+  apiKeyPrefix   String // first chars, for display ("ag_live_ab12...")
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  decisions      Decision[]
+
+  @@index([organizationId])
+}
+
+// ---------------------------------------------------------------------------
+// Policies (the rule set the engine evaluates)
+// ---------------------------------------------------------------------------
+
+enum Effect {
+  ALLOW
+  DENY
+}
+
+// One rule. `resource` is a dotted scope ("billing.refund"); `subtree=true`
+// matches that scope and everything beneath it. Mirrors plm-access-engine.
+model Policy {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  action         String // action the rule speaks about ("refund", "*")
+  resource       String // resource scope ("billing", "billing.eu")
+  subtree        Boolean      @default(false)
+  effect         Effect
+  priority       Int          @default(0)
+  enabled        Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+// ---------------------------------------------------------------------------
+// Decisions (the audit log + graph)
+// ---------------------------------------------------------------------------
+
+model Decision {
+  id             String       @id @default(cuid())
+  organizationId String
+  agentId        String
+  action         String
+  resource       String
+  granted        Boolean
+  decidingPolicy String? // Policy.id that decided, null on default-deny
+  applied        Json // full audit: ordered applicable rule ids + inputs
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent          Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  edgesFrom      DecisionEdge[] @relation("edgeFrom")
+  edgesTo        DecisionEdge[] @relation("edgeTo")
+
+  @@index([organizationId, createdAt])
+  @@index([agentId])
+}
+
+// An edge in the decision graph: a decision touched/led-to another node.
+model DecisionEdge {
+  id       String   @id @default(cuid())
+  fromId   String
+  toId     String
+  label    String
+  from     Decision @relation("edgeFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to       Decision @relation("edgeTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@unique([fromId, toId, label])
+}
+
+// ---------------------------------------------------------------------------
+// Webhooks + billing
+// ---------------------------------------------------------------------------
+
+model WebhookEndpoint {
+  id             String       @id @default(cuid())
+  organizationId String
+  url            String
+  secret         String // used to sign deliveries (HMAC)
+  event          String       @default("decision.denied")
+  enabled        Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+model Subscription {
+  id                   String       @id @default(cuid())
+  organizationId       String       @unique
+  plan                 Plan         @default(FREE)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  status               String       @default("active")
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
