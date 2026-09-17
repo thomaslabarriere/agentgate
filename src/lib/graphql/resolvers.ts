@@ -6,6 +6,7 @@ import type { Effect as PrismaEffect, Role } from "@prisma/client";
 import type { GraphQLContext } from "@/lib/graphql/context";
 import type { Rule } from "@/lib/policy/engine";
 import { generateApiKey } from "@/lib/apikey";
+import { assertSafeWebhookUrl } from "@/lib/webhooks";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested without a DB)
@@ -375,6 +376,13 @@ export const resolvers = {
       ctx: GraphQLContext,
     ) => {
       assertRole(ctx.role, "ADMIN");
+      // Reject a webhook URL that resolves to a non-public host at creation
+      // time, not only at delivery, so a bad endpoint never gets stored.
+      try {
+        await assertSafeWebhookUrl(args.url);
+      } catch (err) {
+        throw new GraphQLError(err instanceof Error ? err.message : "invalid webhook url");
+      }
       const created = await ctx.prisma.webhookEndpoint.create({
         data: {
           url: args.url,

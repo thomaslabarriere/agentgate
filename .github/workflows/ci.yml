@@ -1,0 +1,97 @@
+name: CI
+
+# No untrusted event data (PR titles, branch names, fork input) is ever
+# interpolated into a run: step. Only pull_request/push triggers; jobs use
+# static commands and env only.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Dummy, non-secret dev values so `next build` boots without a real GitHub
+# OAuth app. The DATABASE_URL for jobs that need a DB is set per-job to point
+# at the Postgres service container.
+env:
+  AUTH_SECRET: dev-secret-ci-only-not-real
+  AUTH_GITHUB_ID: dev
+  AUTH_GITHUB_SECRET: dev
+  AUTH_TRUST_HOST: "true"
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+jobs:
+  unit:
+    name: Unit tests + lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx vitest run
+      - run: npm run lint
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agentgate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/agentgate?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma db push
+      - run: npm run build
+
+  e2e:
+    name: E2E (ingestion)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agentgate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/agentgate?schema=public
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma db push
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
