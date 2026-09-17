@@ -7,6 +7,8 @@ audit trail are stored and shown in a console with a decisions browser, policy
 editor, decision graph, and analytics. It mirrors the decision-infrastructure /
 agent-governance / auditability domain.
 
+**Live:** https://agentgate-alpha.vercel.app (sign in with GitHub)
+
 ## What it does
 
 - Gate every agent action through a single decision API instead of scattering
