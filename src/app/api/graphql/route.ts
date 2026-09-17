@@ -62,6 +62,22 @@ export async function POST(request: Request): Promise<Response> {
     operationName: body.operationName ?? undefined,
     contextValue,
   });
+
+  // In production, mask messages from unexpected (non-GraphQLError) throws, e.g.
+  // a raw Prisma/driver error, so their internals never reach the client. Our
+  // deliberate errors are already GraphQLError with safe messages (assertRole,
+  // validation, etc.) and are preserved. graphql-yoga did this for free; the
+  // direct executor does not, so we restore parity here.
+  if (isProd && result.errors?.length) {
+    return Response.json({
+      ...result,
+      errors: result.errors.map((e) =>
+        e.originalError && !(e.originalError instanceof GraphQLError)
+          ? new GraphQLError("Internal server error.", { nodes: e.nodes, path: e.path })
+          : e,
+      ),
+    });
+  }
   return Response.json(result);
 }
 
