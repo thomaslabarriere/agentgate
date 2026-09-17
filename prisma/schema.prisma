@@ -163,7 +163,7 @@ model Decision {
   edgesFrom      DecisionEdge[] @relation("edgeFrom")
   edgesTo        DecisionEdge[] @relation("edgeTo")
 
-  @@index([organizationId, createdAt])
+  @@index([organizationId, createdAt, id])
   @@index([agentId])
 }
 

@@ -97,6 +97,12 @@ export interface DecisionPage {
   nextCursor: string | null;
 }
 
+/** The decision graph: recent decisions and the succession edges among them. */
+export interface DecisionGraphData {
+  nodes: Decision[];
+  edges: DecisionEdge[];
+}
+
 export interface AgentBreakdown {
   agentId: string;
   agentName: string;

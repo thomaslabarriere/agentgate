@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Plan, Role } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, setActiveOrg, slugify } from "@/lib/auth";
+import { Button, Card, CardBody, CardHeader } from "@/components/ui";
 
 const CreateOrgSchema = z.object({
   name: z.string().trim().min(2, "Organization name is too short").max(60),
@@ -59,34 +60,30 @@ export default async function OnboardingPage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-md flex-col gap-6 px-6 py-16">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Create your organization</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Organizations own agents, policies and their audit trail. You&apos;ll be
-          its owner.
-        </p>
-      </div>
-      <form action={createOrg} className="flex flex-col gap-4">
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Organization name
-          <input
-            name="name"
-            type="text"
-            required
-            minLength={2}
-            maxLength={60}
-            placeholder="Acme Inc."
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900"
-          />
-        </label>
-        <button
-          type="submit"
-          className="inline-flex h-10 items-center justify-center rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-        >
-          Create organization
-        </button>
-      </form>
-    </main>
+    <div className="mx-auto max-w-md py-16">
+      <Card>
+        <CardHeader
+          title="Create your organization"
+          subtitle="Organizations own agents, policies and their audit trail. You'll be its owner."
+        />
+        <CardBody>
+          <form action={createOrg} className="flex flex-col gap-4">
+            <label className="flex flex-col gap-1.5 text-sm font-medium text-zinc-300">
+              Organization name
+              <input
+                name="name"
+                type="text"
+                required
+                minLength={2}
+                maxLength={60}
+                placeholder="Acme Inc."
+                className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none"
+              />
+            </label>
+            <Button type="submit">Create organization</Button>
+          </form>
+        </CardBody>
+      </Card>
+    </div>
   );
 }

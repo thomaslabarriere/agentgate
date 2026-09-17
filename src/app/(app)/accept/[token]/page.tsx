@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, setActiveOrg } from "@/lib/auth";
+import { Badge, Button, Card, CardBody, CardHeader } from "@/components/ui";
 
 export const metadata = { title: "Accept invitation — AgentGate" };
 
@@ -87,31 +88,35 @@ export default async function AcceptInvitePage({
   }
 
   return (
-    <main className="mx-auto flex max-w-md flex-col gap-6 px-6 py-16">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Join {org.name}</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          You&apos;ve been invited to join <span className="font-medium">{org.name}</span>{" "}
-          as <span className="font-medium">{invitation.role}</span>.
-        </p>
-      </div>
-      <form action={accept}>
-        <button
-          type="submit"
-          className="inline-flex h-10 items-center justify-center rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-        >
-          Accept invitation
-        </button>
-      </form>
-    </main>
+    <div className="mx-auto max-w-md py-16">
+      <Card>
+        <CardHeader
+          title={`Join ${org.name}`}
+          subtitle="You've been invited to this organization."
+        />
+        <CardBody className="flex flex-col gap-4">
+          <p className="flex items-center gap-2 text-sm text-zinc-300">
+            Role
+            <Badge variant="role">{invitation.role}</Badge>
+          </p>
+          <form action={accept}>
+            <Button type="submit">Accept invitation</Button>
+          </form>
+        </CardBody>
+      </Card>
+    </div>
   );
 }
 
 function Message({ title, body }: { title: string; body: string }) {
   return (
-    <main className="mx-auto flex max-w-md flex-col gap-3 px-6 py-16">
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">{body}</p>
-    </main>
+    <div className="mx-auto max-w-md py-16">
+      <Card>
+        <CardHeader title={title} />
+        <CardBody>
+          <p className="text-sm text-zinc-400">{body}</p>
+        </CardBody>
+      </Card>
+    </div>
   );
 }

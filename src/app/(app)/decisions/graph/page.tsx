@@ -1,14 +1,14 @@
 import { PageHeader, EmptyState, Card, CardBody } from "@/components/ui";
 import { DecisionGraph } from "@/components/DecisionGraph";
-import { gql, type Decision, type DecisionDetail, type DecisionEdge } from "@/lib/gql";
-import { DECISION_GRAPH_QUERY, DECISION_DETAIL_QUERY } from "@/lib/queries";
+import { gql, type Decision, type DecisionEdge, type DecisionGraphData } from "@/lib/gql";
+import { DECISION_GRAPH_QUERY } from "@/lib/queries";
 
-interface GraphListData {
-  decisions: { nodes: Decision[] };
+interface GraphData {
+  decisionGraph: DecisionGraphData;
 }
 
-// The SDL exposes edges only on `decision(id)`, so we fetch a bounded set of
-// decisions and then resolve their edges concurrently.
+// The graph is fetched in a SINGLE `decisionGraph` query (nodes + edges) rather
+// than N+1 per-decision calls.
 const MAX_NODES = 40;
 
 export default async function DecisionGraphPage() {
@@ -16,18 +16,9 @@ export default async function DecisionGraphPage() {
   let edges: DecisionEdge[] = [];
 
   try {
-    const list = await gql<GraphListData>(DECISION_GRAPH_QUERY, { limit: MAX_NODES });
-    nodes = list.decisions.nodes;
-
-    const details = await Promise.all(
-      nodes.map((d) =>
-        gql<{ decision: DecisionDetail | null }>(DECISION_DETAIL_QUERY, { id: d.id })
-          .then((r) => r.decision?.edges ?? [])
-          .catch(() => [] as DecisionEdge[]),
-      ),
-    );
-    const all = details.flat();
-    edges = Array.from(new Map(all.map((e) => [e.id, e])).values());
+    const data = await gql<GraphData>(DECISION_GRAPH_QUERY, { limit: MAX_NODES });
+    nodes = data.decisionGraph.nodes;
+    edges = data.decisionGraph.edges;
   } catch {
     nodes = [];
     edges = [];
@@ -37,7 +28,7 @@ export default async function DecisionGraphPage() {
     <>
       <PageHeader
         title="Decision graph"
-        description="How decisions relate — each node is a decision, coloured by verdict; edges show what led to what."
+        description="How decisions relate — each node is a decision, coloured by verdict; an edge links an agent's consecutive decisions in time order (it succeeds the one before it)."
       />
       {nodes.length === 0 ? (
         <EmptyState
@@ -57,6 +48,10 @@ export default async function DecisionGraphPage() {
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-sm bg-rose-500/70 ring-1 ring-rose-400" />
                 Denied decision
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-px w-5 bg-zinc-500" />
+                Edge = same agent, next decision (&ldquo;succeeds&rdquo;)
               </span>
               <span className="text-zinc-500">
                 {nodes.length} decisions · {edges.length} edges

@@ -25,8 +25,8 @@ export async function inviteMember(formData: FormData): Promise<void> {
   const org = await getActiveOrg();
   if (!org) redirect("/onboarding");
 
-  // Authorization: only ADMIN or OWNER may invite.
-  await requireRole(org.id, Role.ADMIN);
+  // Authorization: member management is OWNER-only.
+  await requireRole(org.id, Role.OWNER);
 
   const parsed = InviteSchema.safeParse({
     email: formData.get("email"),
@@ -51,11 +51,11 @@ export async function inviteMember(formData: FormData): Promise<void> {
   revalidatePath("/settings/team");
 }
 
-/** Cancel a pending invitation. ADMIN+ only. */
+/** Cancel a pending invitation. OWNER only. */
 export async function cancelInvitation(formData: FormData): Promise<void> {
   const org = await getActiveOrg();
   if (!org) redirect("/onboarding");
-  await requireRole(org.id, Role.ADMIN);
+  await requireRole(org.id, Role.OWNER);
 
   const invitationId = String(formData.get("invitationId") ?? "");
   if (!invitationId) return;

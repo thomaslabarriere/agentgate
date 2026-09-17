@@ -9,7 +9,7 @@
 import { PrismaClient, type Effect } from "@prisma/client";
 
 import { hashApiKey } from "../src/lib/apikey";
-import { mapPoliciesToRules, type PolicyRow } from "../src/lib/graphql/resolvers";
+import { mapPoliciesToRules, type PolicyRow } from "../src/lib/policy/adapter";
 import { decide, type Rule } from "../src/lib/policy/engine";
 
 const prisma = new PrismaClient();
@@ -112,6 +112,9 @@ async function main(): Promise<void> {
   //    using the real engine so verdicts match ingestion.
   await prisma.decision.deleteMany({ where: { organizationId: org.id } });
   const decisionIds: string[] = [];
+  // Track each agent's decisions in creation (time) order so we can link
+  // consecutive ones as succession edges below.
+  const byAgent = new Map<string, string[]>();
   const TARGET = 40;
   for (let i = 0; i < TARGET; i++) {
     const agentId = agentIds[i % agentIds.length];
@@ -133,16 +136,20 @@ async function main(): Promise<void> {
       select: { id: true },
     });
     decisionIds.push(created.id);
+    const seq = byAgent.get(agentId) ?? [];
+    seq.push(created.id);
+    byAgent.set(agentId, seq);
   }
 
-  // 5. A few decision-graph edges to populate the graph viz. Link each decision
-  //    to the next few, deterministically, without duplicating an edge.
-  let edgeCount = 0;
-  for (let i = 0; i + 3 < decisionIds.length && edgeCount < 6; i += 7) {
-    await prisma.decisionEdge.create({
-      data: { fromId: decisionIds[i], toId: decisionIds[i + 3], label: "followed-by" },
-    });
-    edgeCount++;
+  // 5. Decision-graph edges: same-agent temporal succession. For each agent,
+  //    link its consecutive decisions (prev -> next) in time order. This is the
+  //    honest edge semantics the graph viz renders (see DECISIONS.md).
+  for (const seq of byAgent.values()) {
+    for (let i = 0; i + 1 < seq.length; i++) {
+      await prisma.decisionEdge.create({
+        data: { fromId: seq[i], toId: seq[i + 1], label: "succeeds" },
+      });
+    }
   }
 
   // 6. A FREE subscription for the demo org (upsert on the unique org id).
@@ -156,7 +163,7 @@ async function main(): Promise<void> {
     prisma.agent.count({ where: { organizationId: org.id } }),
     prisma.policy.count({ where: { organizationId: org.id } }),
     prisma.decision.count({ where: { organizationId: org.id } }),
-    prisma.decisionEdge.count(),
+    prisma.decisionEdge.count({ where: { from: { organizationId: org.id } } }),
     prisma.decision.count({ where: { organizationId: org.id, granted: true } }),
   ]);
 

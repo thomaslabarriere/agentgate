@@ -85,6 +85,12 @@ export const typeDefs = /* GraphQL */ `
     label: String!
   }
 
+  "The decision graph: recent decisions and the succession edges among them."
+  type DecisionGraph {
+    nodes: [Decision!]!
+    edges: [DecisionEdge!]!
+  }
+
   "A single decision with its full audit trail and graph edges."
   type DecisionDetail {
     id: ID!
@@ -130,14 +136,6 @@ export const typeDefs = /* GraphQL */ `
     status: String!
   }
 
-  type Invitation {
-    id: ID!
-    email: String!
-    role: Role!
-    token: String!
-    createdAt: DateTime!
-  }
-
   "Returned once on creation — carries the raw key, shown a single time."
   type CreateAgentResult {
     agent: Agent!
@@ -169,6 +167,7 @@ export const typeDefs = /* GraphQL */ `
     policies: [Policy!]!
     decisions(limit: Int, cursor: String, filter: DecisionFilter): DecisionConnection!
     decision(id: ID!): DecisionDetail
+    decisionGraph(limit: Int): DecisionGraph!
     analytics(range: AnalyticsRange = WEEK): Analytics!
     webhooks: [Webhook!]!
     subscription: Subscription
@@ -179,7 +178,6 @@ export const typeDefs = /* GraphQL */ `
     revokeAgent(id: ID!): Boolean!
     upsertPolicy(input: UpsertPolicyInput!): Policy!
     deletePolicy(id: ID!): Boolean!
-    inviteMember(email: String!, role: Role!): Invitation!
     createWebhook(url: String!, event: String): Webhook!
     deleteWebhook(id: ID!): Boolean!
   }

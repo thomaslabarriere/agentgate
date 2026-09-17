@@ -23,7 +23,7 @@ import {
   deleteWebhookAction,
 } from "@/app/(app)/settings/webhooks/actions";
 
-const EVENTS = ["decision.denied", "decision.allowed"];
+const EVENTS = ["decision.denied"];
 
 export function WebhooksManager({ webhooks }: { webhooks: Webhook[] }) {
   const [url, setUrl] = useState("");

@@ -57,13 +57,13 @@ export const DECISION_DETAIL_QUERY = /* GraphQL */ `
 `;
 
 export const DECISION_GRAPH_QUERY = /* GraphQL */ `
-  query DecisionGraph($limit: Int!) {
-    decisions(limit: $limit) {
+  query DecisionGraph($limit: Int) {
+    decisionGraph(limit: $limit) {
       nodes {
         id action resource granted decidingPolicy createdAt
         agent { id name }
       }
-      nextCursor
+      edges { id fromId toId label }
     }
   }
 `;

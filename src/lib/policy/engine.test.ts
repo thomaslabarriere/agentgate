@@ -91,4 +91,55 @@ describe("decide", () => {
     expect(d1.granted).toBe(d2.granted);
     expect(d1.decidingPolicy).toBe(d2.decidingPolicy);
   });
+
+  // (a) Specificity outranks deny-overrides: at equal priority, a MORE-SPECIFIC
+  // ALLOW must beat a BROAD DENY. This isolates specificity from deny-overrides,
+  // proving deny only wins on an otherwise-equal rank.
+  it("a more specific allow beats a broad deny at equal priority", () => {
+    const allow = rule("a", "ALLOW", { resource: "billing.eu", subtree: false, priority: 0 });
+    const deny = rule("d", "DENY", { resource: "billing", subtree: true, priority: 0 });
+    const d = decide([allow, deny], { action: "refund", resource: "billing.eu" });
+    expect(d.granted).toBe(true);
+    expect(d.decidingPolicy).toBe("a");
+    expect(decide([deny, allow], { action: "refund", resource: "billing.eu" }).decidingPolicy).toBe("a");
+  });
+
+  // (b) A deeper subtree prefix is more specific than a shallower one.
+  it("a deeper subtree beats a shallower subtree", () => {
+    const shallow = rule("d", "DENY", { resource: "billing", subtree: true });
+    const deep = rule("a", "ALLOW", { resource: "billing.eu", subtree: true });
+    const d = decide([shallow, deep], { action: "refund", resource: "billing.eu.sepa" });
+    expect(d.granted).toBe(true);
+    expect(d.decidingPolicy).toBe("a");
+  });
+
+  // (c) "*" is the least specific resource: any concrete matching rule outranks it.
+  it("a wildcard resource is least specific and loses to a concrete rule", () => {
+    const wildcard = rule("w", "ALLOW", { resource: "*", subtree: true });
+    const concrete = rule("d", "DENY", { resource: "billing", subtree: true });
+    const d = decide([wildcard, concrete], { action: "refund", resource: "billing.eu" });
+    expect(d.granted).toBe(false);
+    expect(d.decidingPolicy).toBe("d");
+  });
+
+  // (d) Two rules of identical rank tie-break on the smaller id, deterministically,
+  // and `applicable` is ordered best-first.
+  it("same-rank rules resolve to the smaller id and applicable is best-first", () => {
+    const a = rule("a", "ALLOW", { resource: "billing", subtree: true, priority: 0 });
+    const b = rule("b", "ALLOW", { resource: "billing", subtree: true, priority: 0 });
+    const d = decide([b, a], { action: "refund", resource: "billing" });
+    expect(d.decidingPolicy).toBe("a");
+    expect(d.applicable).toEqual(["a", "b"]);
+  });
+
+  // (e) `decide` end-to-end excludes a disabled rule (not just the `applies` helper):
+  // a disabled DENY does not override an enabled ALLOW at an otherwise-equal key.
+  it("decide excludes a disabled rule end-to-end", () => {
+    const allow = rule("a", "ALLOW");
+    const deny = rule("d", "DENY", { enabled: false });
+    const d = decide([allow, deny], { action: "refund", resource: "billing" });
+    expect(d.granted).toBe(true);
+    expect(d.decidingPolicy).toBe("a");
+    expect(d.applicable).toEqual(["a"]);
+  });
 });

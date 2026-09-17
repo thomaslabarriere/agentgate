@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { verifyAgent } from "@/lib/apikey";
 import { decide } from "@/lib/policy/engine";
-import { mapPoliciesToRules } from "@/lib/graphql/resolvers";
+import { mapPoliciesToRules } from "@/lib/policy/adapter";
 import { buildDeniedPayload, deliverDeniedWebhooks } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
@@ -55,7 +55,15 @@ export async function POST(request: Request): Promise<Response> {
   const rules = mapPoliciesToRules(policies);
   const decision = decide(rules, { action, resource });
 
-  // 4. Persist the decision with its audit trail.
+  // 4. Persist the decision with its audit trail. Look up this agent's
+  //    immediately-previous decision BEFORE inserting the new one, so we can
+  //    link them as a temporal succession edge (from prev -> new).
+  const prev = await prisma.decision.findFirst({
+    where: { organizationId: orgId, agentId: verified.agent.id },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { id: true },
+  });
+
   const persisted = await prisma.decision.create({
     data: {
       organizationId: orgId,
@@ -71,6 +79,14 @@ export async function POST(request: Request): Promise<Response> {
     },
     select: { id: true },
   });
+
+  // Link the agent's previous decision to this one: an honest edge semantics of
+  // same-agent temporal succession. Skip when there is no prior decision.
+  if (prev) {
+    await prisma.decisionEdge.create({
+      data: { fromId: prev.id, toId: persisted.id, label: "succeeds" },
+    });
+  }
 
   // 5. On DENY, fire webhooks best-effort (never fail the request path).
   if (!decision.granted) {

@@ -44,6 +44,17 @@ session-based: it resolves the agent by the SHA-256 hash of its API key and
 scopes all work to that agent's organization, so a leaked or wrong key cannot
 reach another tenant's policies or decisions.
 
+## Decision graph edges: same-agent temporal succession
+
+A `DecisionEdge` has one honest meaning: it links an agent's two consecutive
+decisions in time order. When a decision is persisted (at ingestion, and in the
+seed), we look up that same agent's immediately-previous decision in the same
+org and add an edge `from = prev, to = new` labelled "succeeds". So following
+the edges out of a node walks that agent's decision timeline forward, and the
+graph is not decorative: every edge is a real prev-to-next relationship the data
+supports. The graph page shows a one-line legend saying exactly this: an edge
+means the same agent's next decision (it "succeeds" the one before it).
+
 ## SSRF-guarded webhooks
 
 `decision.denied` webhooks deliver to operator-supplied URLs, which is a classic

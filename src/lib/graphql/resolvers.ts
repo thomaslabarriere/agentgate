@@ -4,37 +4,16 @@ import { GraphQLError, GraphQLScalarType, Kind } from "graphql";
 import type { Effect as PrismaEffect, Role } from "@prisma/client";
 
 import type { GraphQLContext } from "@/lib/graphql/context";
-import type { Rule } from "@/lib/policy/engine";
 import { generateApiKey } from "@/lib/apikey";
 import { assertSafeWebhookUrl } from "@/lib/webhooks";
+
+// The Policy -> Rule adapter lives with the engine now (src/lib/policy/adapter).
+// Re-exported here so existing importers of the resolver module keep working.
+export { mapPoliciesToRules, type PolicyRow } from "@/lib/policy/adapter";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested without a DB)
 // ---------------------------------------------------------------------------
-
-/** A Policy row as far as rule-mapping cares — the engine-relevant columns. */
-export interface PolicyRow {
-  id: string;
-  action: string;
-  resource: string;
-  subtree: boolean;
-  effect: PrismaEffect;
-  priority: number;
-  enabled: boolean;
-}
-
-/** Map persisted Policy rows to engine `Rule[]`. Pure; no verdict logic here. */
-export function mapPoliciesToRules(policies: PolicyRow[]): Rule[] {
-  return policies.map((p) => ({
-    id: p.id,
-    action: p.action,
-    resource: p.resource,
-    subtree: p.subtree,
-    effect: p.effect, // Prisma Effect ("ALLOW"|"DENY") === engine Effect
-    priority: p.priority,
-    enabled: p.enabled,
-  }));
-}
 
 const ROLE_RANK: Record<Role, number> = { MEMBER: 1, ADMIN: 2, OWNER: 3 };
 
@@ -203,7 +182,9 @@ export const resolvers = {
           ...(f.resource ? { resource: f.resource } : {}),
         },
         include: { agent: true },
-        orderBy: { createdAt: "desc" },
+        // TOTAL order: createdAt is not unique, so ties must break on the
+        // unique id or an id cursor drops/duplicates rows across pages.
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: take + 1,
         ...(args.cursor ? { cursor: { id: args.cursor }, skip: 1 } : {}),
       });
@@ -226,6 +207,33 @@ export const resolvers = {
         ...d,
         edges: [...d.edgesFrom, ...d.edgesTo],
       };
+    },
+
+    decisionGraph: async (
+      _p: unknown,
+      args: { limit?: number | null },
+      ctx: GraphQLContext,
+    ) => {
+      assertRole(ctx.role, "MEMBER");
+      const org = orgId(ctx);
+      const take = Math.min(Math.max(args.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
+      // Fetch the org's recent decisions in one query, then their succession
+      // edges in a single second query (no per-node N+1). Edges are kept only
+      // when BOTH endpoints are within the fetched node set.
+      const nodes = await ctx.prisma.decision.findMany({
+        where: { organizationId: org },
+        include: { agent: true },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take,
+      });
+      const ids = nodes.map((n) => n.id);
+      const edges =
+        ids.length === 0
+          ? []
+          : await ctx.prisma.decisionEdge.findMany({
+              where: { fromId: { in: ids }, toId: { in: ids } },
+            });
+      return { nodes, edges };
     },
 
     analytics: async (
@@ -357,17 +365,6 @@ export const resolvers = {
         where: { id: args.id, organizationId: orgId(ctx) },
       });
       return res.count > 0;
-    },
-
-    inviteMember: async (
-      _p: unknown,
-      args: { email: string; role: Role },
-      ctx: GraphQLContext,
-    ) => {
-      assertRole(ctx.role, "OWNER");
-      return ctx.prisma.invitation.create({
-        data: { email: args.email, role: args.role, organizationId: orgId(ctx) },
-      });
     },
 
     createWebhook: async (

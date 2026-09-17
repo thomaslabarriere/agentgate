@@ -31,7 +31,7 @@ interface DashboardData {
 export default async function DashboardPage() {
   let data: DashboardData | null = null;
   try {
-    data = await gql<DashboardData>(DASHBOARD_QUERY, { range: "30d" });
+    data = await gql<DashboardData>(DASHBOARD_QUERY);
   } catch {
     data = null;
   }
