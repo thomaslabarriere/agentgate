@@ -11,10 +11,12 @@ const PORT = 3000;
 const BASE_URL = `http://localhost:${PORT}`;
 
 // Dummy dev-only values so `next build`/`next start` boot without real secrets.
-// DATABASE_URL is only forwarded when the environment defines it (CI service
-// container); locally it is left unset so Next loads it from `.env`, avoiding a
-// bogus fallback that would override real local credentials. AUTH_TRUST_HOST
-// lets Auth.js accept the localhost host under `next start`.
+// The Prisma datasource reads the Neon/Vercel-injected names
+// (Database_POSTGRES_PRISMA_URL / Database_DATABASE_URL_UNPOOLED); these are
+// forwarded only when the environment defines them (CI service container).
+// Locally they are left unset so Next loads them from `.env`, avoiding a bogus
+// fallback that would override real local credentials. AUTH_TRUST_HOST lets
+// Auth.js accept the localhost host under `next start`.
 const webServerEnv: Record<string, string> = {
   AUTH_SECRET: process.env.AUTH_SECRET ?? "dev-secret-e2e-only",
   AUTH_GITHUB_ID: process.env.AUTH_GITHUB_ID ?? "dev",
@@ -22,8 +24,12 @@ const webServerEnv: Record<string, string> = {
   AUTH_TRUST_HOST: "true",
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? BASE_URL,
 };
-if (process.env.DATABASE_URL) {
-  webServerEnv.DATABASE_URL = process.env.DATABASE_URL;
+for (const key of [
+  "Database_POSTGRES_PRISMA_URL",
+  "Database_DATABASE_URL_UNPOOLED",
+]) {
+  const value = process.env[key];
+  if (value) webServerEnv[key] = value;
 }
 
 export default defineConfig({
